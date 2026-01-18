@@ -5,6 +5,9 @@ node_modules/
 
 # Production env file 
 .env
+.env.prod
 
 test-results/
 .qodo
+.idea/
+mysql_data/
