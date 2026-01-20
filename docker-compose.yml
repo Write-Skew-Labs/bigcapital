@@ -1,28 +1,43 @@
   # This is a production version of the Bigcapital docker-compose.yml file.
 services:
-  proxy:
-    image: envoyproxy/envoy:v1.30-latest
-    depends_on:
-        - server
-        - webapp
+  traefik:
+    image: traefik:v3.6.5
+    container_name: traefik
+    restart: always
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
     ports:
-        - '${PUBLIC_PROXY_PORT:-80}:80'
-        - '${PUBLIC_PROXY_SSL_PORT:-443}:443'
-    tty: true
+      - "8443:8443"
+      - "9443:9443"
+      - "9444:9444"
     volumes:
-        - ./docker/envoy/envoy.yaml:/etc/envoy/envoy.yaml
-    restart: on-failure
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik
+    environment:
+      - CF_DNS_API_TOKEN=${CF_API_TOKEN}
     networks:
-        - bigcapital_network
+      bigcapital_network:
   webapp:
     container_name: bigcapital-webapp
     image: bigcapitalhq/webapp:latest
     restart: on-failure
     networks:
           - bigcapital_network
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.bigcapital.rule=Host(`billing.writeskewlabs.com`)"
+      - "traefik.http.routers.bigcapital.entrypoints=websecure"
+      - "traefik.http.routers.bigcapital.tls=true"
+      - "traefik.http.routers.bigcapital.tls.certresolver=letsencrypt"
+
+      - "traefik.http.services.bigcapital.loadbalancer.server.port=80"
+
   server:
     container_name: bigcapital-server
     image: bigcapitalhq/server:latest
+    volumes:
+      - ./le-staging.pem:/etc/ssl/certs/le-staging.pem:ro
     expose:
       - '3000'
     links:
@@ -58,12 +73,6 @@ services:
       # Tenants databases
       - TENANT_DB_NAME_PERFIX=${TENANT_DB_NAME_PERFIX}
 
-      # Authentication
-      - JWT_SECRET=${JWT_SECRET}
-
-      # MongoDB
-      - MONGODB_DATABASE_URL=mongodb://mongo/bigcapital
-
       # Application
       - JWT_SECRET=${JWT_SECRET}
 
@@ -91,7 +100,7 @@ services:
 
       # Exchange Rate
       - EXCHANGE_RATE_SERVICE=${EXCHANGE_RATE_SERVICE}
-      - OPEN_EXCHANGE_RATE_APP_ID-${OPEN_EXCHANGE_RATE_APP_ID}
+      - OPEN_EXCHANGE_RATE_APP_ID=${OPEN_EXCHANGE_RATE_APP_ID}
 
       # Bank Sync
       - BANK_FEED_ENABLED=${BANK_FEED_ENABLED}
@@ -124,7 +133,6 @@ services:
       - S3_ENDPOINT=${S3_ENDPOINT}
       - S3_BUCKET=${S3_BUCKET}
       - S3_FORCE_PATH_STYLE=${S3_FORCE_PATH_STYLE}
-      - S3_PUBLIC_URL=${S3_PUBLIC_URL}
 
       # Stripe
       - STRIPE_PAYMENT_SECRET_KEY=${STRIPE_PAYMENT_SECRET_KEY}
@@ -133,16 +141,30 @@ services:
       - STRIPE_PAYMENT_WEBHOOKS_SECRET=${STRIPE_PAYMENT_WEBHOOKS_SECRET}
       - STRIPE_PAYMENT_REDIRECT_URL=${STRIPE_PAYMENT_REDIRECT_URL}
 
+      # LOCAL_SETUP: Uncomment the following env var to add lets-encrypt ca to trusted node CA
+#      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/le-staging.pem
+    labels:
+      - "traefik.enable=true"
+
+      - "traefik.http.routers.bigcapital-api.rule=Host(`billing.writeskewlabs.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.bigcapital-api.entrypoints=websecure"
+      - "traefik.http.routers.bigcapital-api.tls=true"
+      - "traefik.http.routers.bigcapital-api.tls.certresolver=letsencrypt"
+
+      - "traefik.http.services.bigcapital-api.loadbalancer.server.port=3000"
+
+    # LOCAL_SETUP: Uncomment the following block to resolve the subdomains by host gateway
+#    extra_hosts:
+#      - "s3.writeskewlabs.com:host-gateway"
+#      - "console.s3.writeskewlabs.com:host-gateway"
+
   rustfs:
     image: rustfs/rustfs:latest
     container_name: rustfs
     user: "10001:10001"
-    ports:
-      - "10000:9000"   # S3 API
-      - "10001:9001"   # Admin UI
     volumes:
-      - ./rustfs_data:/data
-      - ./rustfs_logs:/logs
+      - ./rustfs/rustfs_data:/data
+      - ./rustfs/rustfs_logs:/logs
     command: /data
     restart: unless-stopped
     networks:
@@ -153,7 +175,24 @@ services:
       RUSTFS_CONSOLE_ENABLE: true
       RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY_ID}
       RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_ACCESS_KEY}
+    labels:
+      - "traefik.enable=true"
 
+      # -------- S3 API --------
+      - "traefik.http.routers.rustfs.rule=Host(`s3.writeskewlabs.com`)"
+      - "traefik.http.routers.rustfs.entrypoints=rustfs"
+      - "traefik.http.routers.rustfs.tls=true"
+      - "traefik.http.routers.rustfs.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.rustfs.service=rustfs-api"
+      - "traefik.http.services.rustfs-api.loadbalancer.server.port=9000"
+
+      # -------- ADMIN CONSOLE --------
+      - "traefik.http.routers.rustfs-console.rule=Host(`console.s3.writeskewlabs.com`)"
+      - "traefik.http.routers.rustfs-console.entrypoints=rustfs-console"
+      - "traefik.http.routers.rustfs-console.tls=true"
+      - "traefik.http.routers.rustfs-console.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.rustfs-console.service=rustfs-console"
+      - "traefik.http.services.rustfs-console.loadbalancer.server.port=9001"
   database_migration:
     container_name: bigcapital-database-migration
     build:
