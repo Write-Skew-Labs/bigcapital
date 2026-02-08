@@ -12,6 +12,9 @@ import {
   I18nModule,
   QueryResolver,
 } from 'nestjs-i18n';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { ExpressAdapter } from '@bull-board/express';
+import { createBullBoardAuthMiddleware } from '@/middleware/bull-board-auth.middleware';
 import { BullModule } from '@nestjs/bullmq';
 import { ScheduleModule } from '@nestjs/schedule';
 import { PassportModule } from '@nestjs/passport';
@@ -36,8 +39,8 @@ import { PdfTemplatesModule } from '../PdfTemplate/PdfTemplates.module';
 import { BranchesModule } from '../Branches/Branches.module';
 import { WarehousesModule } from '../Warehouses/Warehouses.module';
 import { SerializeInterceptor } from '@/common/interceptors/serialize.interceptor';
-import { ValidationPipe } from '@/common/pipes/ClassValidation.pipe';
 import { ToJsonInterceptor } from '@/common/interceptors/to-json.interceptor';
+import { ValidationPipe } from '@/common/pipes/ClassValidation.pipe';
 import { ServiceErrorFilter } from '@/common/filters/service-error.filter';
 import { ModelHasRelationsFilter } from '@/common/filters/model-has-relations.filter';
 import { ChromiumlyTenancyModule } from '../ChromiumlyTenancy/ChromiumlyTenancy.module';
@@ -137,10 +140,28 @@ import { AppThrottleModule } from './AppThrottle.module';
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         connection: {
-          host: configService.get('QUEUE_HOST'),
-          port: configService.get('QUEUE_PORT'),
+          host: configService.get('queue.host'),
+          port: configService.get('queue.port'),
         },
       }),
+      inject: [ConfigService],
+    }),
+    BullBoardModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => {
+        const enabled = configService.get<boolean>('bullBoard.enabled');
+        const username = configService.get<string>('bullBoard.username');
+        const password = configService.get<string>('bullBoard.password');
+        return {
+          route: '/queues',
+          adapter: ExpressAdapter,
+          middleware: createBullBoardAuthMiddleware(
+            enabled,
+            username,
+            password,
+          ),
+        };
+      },
       inject: [ConfigService],
     }),
     ClsModule.forRoot({
@@ -158,8 +179,8 @@ import { AppThrottleModule } from './AppThrottle.module';
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
         config: {
-          host: configService.get('redis.host') || 'localhost',
-          port: configService.get('redis.port') || 6379,
+          host: configService.get('redis.host'),
+          port: configService.get('redis.port'),
         },
       }),
       inject: [ConfigService],
@@ -248,11 +269,11 @@ import { AppThrottleModule } from './AppThrottle.module';
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: ToJsonInterceptor,
+      useClass: SerializeInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,
-      useClass: SerializeInterceptor,
+      useClass: ToJsonInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

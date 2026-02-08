@@ -17,6 +17,9 @@ import loops from './loops';
 import bankfeed from './bankfeed';
 import throttle from './throttle';
 import cloud from './cloud';
+import redis from './redis';
+import queue from './queue';
+import bullBoard from './bull-board';
 
 export const config = [
   app,
@@ -38,4 +41,7 @@ export const config = [
   loops,
   bankfeed,
   throttle,
+  redis,
+  queue,
+  bullBoard,
 ];
