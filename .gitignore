@@ -14,3 +14,6 @@ mysql_data/
 traefik/acme.json
 rustfs/rustfs_data
 rustfs/rustfs_logs
+
+
+.pnpm-store
