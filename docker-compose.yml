@@ -19,7 +19,7 @@ services:
       bigcapital_network:
   webapp:
     container_name: bigcapital-webapp
-    image: bigcapitalhq/webapp:latest
+    image: bigcapitalhq/webapp:v0.25.16
     restart: on-failure
     networks:
           - bigcapital_network
@@ -35,18 +35,16 @@ services:
 
   server:
     container_name: bigcapital-server
-    image: bigcapitalhq/server:latest
+    image: bigcapitalhq/server:v0.25.16
     volumes:
       - ./le-staging.pem:/etc/ssl/certs/le-staging.pem:ro
     expose:
       - '3000'
     links:
       - mysql
-      - mongo
       - redis
     depends_on:
       - mysql
-      - mongo
       - redis
     restart: on-failure
     networks:
@@ -76,8 +74,10 @@ services:
       # Application
       - JWT_SECRET=${JWT_SECRET}
 
-      # MongoDB
-      - MONGODB_DATABASE_URL=mongodb://mongo/bigcapital
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
+      - QUEUE_HOST=${QUEUE_HOST}
+      - QUEUE_PORT=${QUEUE_PORT}
 
       # Application
       - BASE_URL=${BASE_URL}
@@ -142,7 +142,7 @@ services:
       - STRIPE_PAYMENT_REDIRECT_URL=${STRIPE_PAYMENT_REDIRECT_URL}
 
       # LOCAL_SETUP: Uncomment the following env var to add lets-encrypt ca to trusted node CA
-#      - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/le-staging.pem
+      # - NODE_EXTRA_CA_CERTS=/etc/ssl/certs/le-staging.pem
     labels:
       - "traefik.enable=true"
 
@@ -154,9 +154,9 @@ services:
       - "traefik.http.services.bigcapital-api.loadbalancer.server.port=3000"
 
     # LOCAL_SETUP: Uncomment the following block to resolve the subdomains by host gateway
-#    extra_hosts:
-#      - "s3.writeskewlabs.com:host-gateway"
-#      - "console.s3.writeskewlabs.com:host-gateway"
+    # extra_hosts:
+    #   - "s3.writeskewlabs.com:host-gateway"
+    #   - "console.s3.writeskewlabs.com:host-gateway"
 
   rustfs:
     image: rustfs/rustfs:latest
@@ -226,17 +226,6 @@ services:
       - ./mysql_data:/var/lib/mysql
     ports:
       - "3306:3306"
-    networks:
-      - bigcapital_network
-
-  mongo:
-    image: mongo:noble
-    container_name: bigcapital-mongo
-    restart: on-failure
-    expose:
-      - '27017'
-    volumes:
-      - ./mongodb_data:/var/lib/mongodb
     networks:
       - bigcapital_network
 
